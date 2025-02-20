@@ -1,0 +1,16 @@
+**\__pycache__
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# hidden folder 
+/.*/
+
+# Video files
+*.mp4
