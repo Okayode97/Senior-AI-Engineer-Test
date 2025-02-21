@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List
-import matplotlib.pyplot as plt
+from dataclasses import dataclass
+
 
 class video_reader:
     """
@@ -28,7 +29,7 @@ class video_reader:
     def __next__(self) -> np.ndarray:
         ret, frame = self.video.read()
         if not ret:
-            print("Unable to read frames from video")
+            print("Unable to read frames from video....")
             self.video.release()
             raise StopIteration
         
@@ -61,6 +62,20 @@ class video_reader:
         return frame
 
 
+@dataclass
+class bbox:
+# bbox in the form xyhw
+    x: int
+    y: int
+    height: int
+    width: int
+
+    def draw_bbox_onto_frame(self, frame: np.ndarray) -> np.ndarray:
+        # rectangle drawn using top left cornor to bottom right cornor
+        # color in BGR
+        frame = cv2.rectangle(frame, (self.x, self.y), (self.x + self.width, self.y + self.height), (0, 255, 0), 2)
+        return frame
+
 def image_preprocessing(frame: np.ndarray) -> np.ndarray:
     # reduce resolution by half
     resized_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
@@ -70,7 +85,18 @@ def image_preprocessing(frame: np.ndarray) -> np.ndarray:
     return resized_frame
 
 
-def houghcircle_detections(frame: np.ndarray) -> Tuple[np.ndarray, Optional[List[float]]]:
+def get_minimum_bbox_that_fits_each_circle(hough_circles: np.ndarray) -> List[bbox]:
+    list_of_bbox = []
+    for circles in hough_circles:
+        x = circles[0] - circles[2]
+        y = circles[1] - circles[2]
+        h = circles[2] *2
+        w = circles[2] *2
+        list_of_bbox.append(bbox(x, y, h, w))
+    return list_of_bbox
+    
+
+def houghcircle_detections(frame: np.ndarray) -> List[bbox]:
     greyscale_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # circles is a list of (x, y, r) extra dims added
@@ -79,16 +105,44 @@ def houghcircle_detections(frame: np.ndarray) -> Tuple[np.ndarray, Optional[List
 
     if circles is not None:
         circles = np.uint16(np.around(circles))
-        for i in circles[0,:]:
-            # draw the outer circle
-            cv2.circle(frame,(i[0],i[1]),i[2],(0,255,0),2)
-            # draw the center of the circle
-            cv2.circle(frame,(i[0],i[1]),2,(0,0,255),3)
-    return frame, circles
+        circles = np.rint(circles).astype(int) # round to nearest int
+        return get_minimum_bbox_that_fits_each_circle(circles[0]) #indexed to account for first dim
+    return []
 
-# TODO: Generic function to draw bounding box using detection from the different detectors
-def draw_bounding_box():
-    pass
+
+def draw_bounding_box(frame: np.ndarray, list_of_bbox: List[bbox]) -> np.ndarray:
+    for box in list_of_bbox:
+        # draw bounding box onto frame
+        frame = box.draw_bbox_onto_frame(frame)
+    return frame
+
+
+def colour_based_segmentation(frame: np.ndarray, min_contour_area: int = 500) -> List[bbox]:
+    # convert to hsv colour space
+    hsv_img = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # define hsv range for blue
+    lower_blue = np.array([90, 50, 50])
+    upper_blue = np.array([130, 255, 255])
+
+    # apply color thresholding onto the individual frames in the video
+    # with the lower and upper range of hsv values.
+    mask = cv2.inRange(hsv_img, lower_blue, upper_blue)
+
+    # find the contours within the mask
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # filter contours by area, fit a bounding box onto it and append it to list
+    list_of_bbox: list[bbox] = []
+    for contour in contours:
+        # filter based on area
+        if cv2.contourArea(contour) > min_contour_area:
+
+            # fit a bounding box onto the contour
+            x, y, w, h = cv2.boundingRect(contour)
+            list_of_bbox.append(bbox(x, y, h, w))
+    return list_of_bbox
+
 
 """
 Different opencv detectors to consider
@@ -108,22 +162,23 @@ Different opencv detectors to consider
     low value -> more circle detected but possibly more false positives)
 
 - cv2 colour based segmentation (colour thresholding to detect the gloves in the image.
-- cv2 template matcher or possible other crafted features to detect the bottle of chemical.
+    -
+- Possibly other crafted features to detect the bottle of chemical.
 
 """
 
 video = video_reader(r"AICandidateTest-FINAL.mp4")
-frame = video.get_frame(1875) # also sets the starting frame
+frame = video.get_frame(2678) # also sets the starting frame
 
-# iterate through the video
 for frame in video:
-    # preprocess the individual frame
     frame = image_preprocessing(frame)
 
-    # apply houghcircle detection function
-    frame, _ = houghcircle_detections(frame)
+    list_of_houghcircle_bbox = houghcircle_detections(frame)
+    list_of_color_based_bbox = colour_based_segmentation(frame, 500)
 
-    # display the frame with drawn circle
-    cv2.imshow("Frame", frame)
-    if cv2.waitKey(1) == ord('q'):
+    frame = draw_bounding_box(frame, list_of_color_based_bbox+list_of_houghcircle_bbox)
+
+    # Display result
+    cv2.imshow("Lab technician object detection and tracking", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
