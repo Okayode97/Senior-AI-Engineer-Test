@@ -25,6 +25,25 @@ Primarily we work in Python or C++ for our AI services, so demonstrations of the
 
 To access the video, kindly follow this link: [Video](https://reach-industries-candidate-tests.s3.eu-west-2.amazonaws.com/AICandidateTest-FINAL.mp4). In certain browsers, you might need to right-click on the link and choose "Save Link As" to initiate the download.
 
+setup requires video & model weight to be at root dir
+
+```python
+virtualenv venv -p python
+
+# activate virtual env 
+# source venv\bin\activate # linux
+# venv\Script\activate # windows
+
+pip install -r requirements.txt
+
+# cv based approach
+python cv_based_approach\cv_main.py
+
+# ml based approach
+python ml_based_approach\run_inference.py
+
+```
+
 # Deliverables & How to submit
 
 For the submission of this test, please fork this git repository. We would prefer a submission with a Dockerfile for building a docker image which can run your code on a standard Linux environment with docker installed (nvidia-docker will also be available when executing your code should you wish to use GPU enhancements), we will also accept code files as long as you provide clear instructions on execution and must require little to no editing from our side. You should include all necessary code files and model weights (if necessary due to filesize, upload to an external location and include a download in your Dockerfile) and a readme explaining how to execute your code in your submission. In an ideal world we will be able to pull your repository, build the docker and execute your code. Occasionally due to things out of our control this may not be the case, in this situation we may contact you to discuss your approach instead.
