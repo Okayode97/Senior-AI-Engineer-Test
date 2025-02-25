@@ -1,3 +1,31 @@
+"""
+Different opencv detectors to consider
+- cv2.HoughCircles (with min/max radius), with edge detection. key parameters
+    - min/max radius (35px with +-1 error)
+    - minDist between center coordinate is diameter of max of radius
+    
+    - dp: Inverse ratio of the accumulator resolution
+    (high value (> 1.0) -> much faster but may miss smaller circle, lower,
+    lower value -> more precise but can be computationally expensive)
+
+    - param1: Canny edge detection threshold
+    (high value -> detects fewer edges, while lower value detects more edges)
+
+    - param2: Accumulator threshold for circle detection.
+    (high value -> fewer but more accurate circle,
+    low value -> more circle detected but possibly more false positives)
+
+- cv2 colour based segmentation (colour thresholding to detect the gloves in the image).
+    -
+- Possibly other crafted features to detect the bottle of chemical.
+    - considered using template matcher, which tries to find a template image from the live image,
+      this approach works well for static image but is limited once the object starts to move.
+    - experimenting with using crafted features and feature matching. Similar to the considered 
+      approach with template matcher, it requires providing the target image with features to extract
+      and then find and extract it from the live image.
+    - decided to opt out of tracking bottle.
+"""
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -58,9 +86,7 @@ class video_reader:
         ret, frame = self.video.read()
         if not ret:
             raise RuntimeError("Failed to retrieve the requested frame.")
-        
-        # reset index, back to the start. But this can be useful to set iteration start
-        # self.video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         return frame
 
 
@@ -75,9 +101,11 @@ class bbox:
     def draw_bbox_onto_frame(self, frame: np.ndarray, colour: tuple[int]=(0, 255, 0)) -> np.ndarray:
         # rectangle drawn using top left cornor to bottom right cornor
         # color in BGR
+        # difference in dim (x, y) -> (y, x)
         frame = cv2.rectangle(frame, (self.x, self.y), (self.x + self.width, self.y + self.height),
                 colour, 2)
         return frame
+
 
 def image_preprocessing(frame: np.ndarray) -> np.ndarray:
     # reduce resolution by half
@@ -91,8 +119,8 @@ def image_preprocessing(frame: np.ndarray) -> np.ndarray:
 def get_minimum_bbox_that_fits_each_circle(hough_circles: np.ndarray) -> list[bbox]:
     list_of_bbox = []
     for circles in hough_circles:
-        x = circles[0] - circles[2]
-        y = circles[1] - circles[2]
+        x = np.clip(circles[0] - circles[2], 0, 640)
+        y = np.clip(circles[1] - circles[2], 0, 360)
         h = circles[2] *2
         w = circles[2] *2
         list_of_bbox.append(bbox(x, y, h, w))
@@ -120,7 +148,7 @@ def draw_bounding_box(frame: np.ndarray, list_of_bbox: list[bbox], colour: tuple
     return frame
 
 
-def colour_based_segmentation(frame: np.ndarray, min_contour_area: int = 500) -> list[bbox]:
+def colour_based_detection(frame: np.ndarray, min_contour_area: int = 500) -> list[bbox]:
     # convert to hsv colour space
     hsv_img = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -193,60 +221,36 @@ def experimenting_with_feature_matching(src_img: np.ndarray, tgt_img: np.ndarray
         return src_pts
 
 
-"""
-Different opencv detectors to consider
-- cv2.HoughCircles (with min/max radius), with edge detection. key parameters
-    - min/max radius (35px with +-1 error)
-    - minDist between center coordinate is diameter of max of radius
+def find_chemical_in_houghcircle(frame: np.ndarray, list_of_houghcircles: list[bbox]) -> list[bbox]:
     
-    - dp: Inverse ratio of the accumulator resolution
-    (high value (> 1.0) -> much faster but may miss smaller circle, lower,
-    lower value -> more precise but can be computationally expensive)
+    # selected houghcircle which contains chemical
+    chemical_in_houghcircle = []
 
-    - param1: Canny edge detection threshold
-    (high value -> detects fewer edges, while lower value detects more edges)
+    for ind, box in enumerate(list_of_houghcircles):
+        roi = frame[box.y:box.y+box.width, box.x:box.x+box.height]
 
-    - param2: Accumulator threshold for circle detection.
-    (high value -> fewer but more accurate circle,
-    low value -> more circle detected but possibly more false positives)
+        # convert to hsv colour space
+        hsv_img = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
-- cv2 colour based segmentation (colour thresholding to detect the gloves in the image).
-    -
-- Possibly other crafted features to detect the bottle of chemical.
-    - considered using template matcher, which tries to find a template image from the live image,
-      this approach works well for static image but is limited once the object starts to move.
-    - experimenting with using crafted features and feature matching. Similar to the considered 
-      approach with template matcher, it requires providing the target image with features to extract
-      and then find and extract it from the live image.
+        # define hsv range for blue
+        lower_cyan = np.array([85, 30, 116])
+        upper_cyan = np.array([100, 135, 180])
 
-"""
+        # apply color thresholding onto the individual frames in the video
+        # with the lower and upper range of hsv values.
+        mask = cv2.inRange(hsv_img, lower_cyan, upper_cyan)
 
-video = video_reader(r"AICandidateTest-FINAL.mp4")
-frame = video.get_frame(0) # also sets the starting frame
+        # find the contours within the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-sift, flann_matcher = instantiate_sift_and_feature_matcher()
+        # filter contours by area, fit a bounding box onto it and append it to list
+        for contour in contours:
+            # filter based on area
+            if cv2.contourArea(contour) > 100:
+                # update filled status in tracker
+                chemical_in_houghcircle.append(box)
+                cv2.imshow("test", roi)
 
-# target image
-target_img = cv2.imread("target_img.png", cv2.IMREAD_GRAYSCALE)
+        return chemical_in_houghcircle
 
-for frame in video:
-    frame = image_preprocessing(frame)
- 
-    start_time = time.time()
-    list_of_houghcircle_bbox = houghcircle_detections(frame)
-    list_of_color_based_bbox = colour_based_segmentation(frame, 500)
 
-    duration = time.time() - start_time
-    if duration > 0:
-        fps = 1/duration
-        print(f"Detectors fps: {int(fps)} | frame processed: {video.frame_number}/{len(video)}",
-        f"| number of detections: {len(list_of_houghcircle_bbox)+len(list_of_color_based_bbox)}")
-
-    frame = draw_bounding_box(frame, list_of_color_based_bbox, (255, 0, 0))
-    frame = draw_bounding_box(frame, list_of_houghcircle_bbox, (0, 255, 0))
-
-    # Display result
-    cv2.imshow("Lab technician object detection and tracking", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
