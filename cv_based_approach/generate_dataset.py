@@ -1,6 +1,6 @@
 import cv_detectors
 import time
-import cv2 H
+import cv2
 import os
 from pathlib import Path
 from collections import defaultdict
@@ -12,13 +12,17 @@ DATA_FOLDER = r"./dataset/"
 categories = [{"id": 1, "name": "petri_dish"},
               {"id": 2, "name": "gloves"}]
 
+# box in format xyhw
 
 def experiment_with_automated_dataset():
-    video = cv_detectors.video_reader(r"../AICandidateTest-FINAL.mp4")
+    video = cv_detectors.video_reader(r"AICandidateTest-FINAL.mp4")
     video.get_frame(0)
 
     annotation = defaultdict(list)
     detection_id = 0
+
+    if not os.path.exists(DATA_FOLDER):
+        os.mkdir(DATA_FOLDER)
 
     for frame in video:
         if video.frame_number % 30 == 0:
@@ -44,7 +48,7 @@ def experiment_with_automated_dataset():
             for box in list_of_houghcircle_bbox:
                 detection_id += 1
                 box_area = int(box.height * box.width)
-                label = {"id": detection_id, "image_id": int(video.frame_number), "category_id": 1, "bbox": [int(box.y), int(box.y), int(box.height), int(box.width)], "area": box_area, "iscrowded": 0}
+                label = {"id": detection_id, "image_id": int(video.frame_number), "category_id": 1, "bbox": [int(box.y), int(box.x), int(box.height), int(box.width)], "area": box_area, "iscrowded": 0}
                 houghcircle_annotations.append(label)
                 frame = box.draw_bbox_onto_frame(frame, (0, 255, 0))
                 frame = cv2.putText(frame, f'id: {detection_id}', (int(box.x), int(box.y+box.height/2)), cv2.FONT_HERSHEY_SIMPLEX, 
@@ -65,7 +69,7 @@ def experiment_with_automated_dataset():
             annotation["annotations"] += houghcircle_annotations
             annotation["annotations"] += color_based_annotations
 
-            img_path = os.path.join(DATA_FOLDER, f"annotations_{int(video.frame_number)}.png")
+            img_path = os.path.join(DATA_FOLDER, f"Annotated_frame_{int(video.frame_number)}.png")
             cv2.imwrite(img_path, frame)
 
     annotation["categories"] = categories

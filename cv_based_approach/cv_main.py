@@ -4,7 +4,6 @@ import cv2
 
 
 video = cv_detectors.video_reader(r"AICandidateTest-FINAL.mp4")
-video.get_frame()
 
 for frame in video:
     frame = cv_detectors.image_preprocessing(frame)
@@ -18,6 +17,7 @@ for frame in video:
         fps = 1/duration
         print(f"Detectors fps: {int(fps)} | frame processed: {video.frame_number}/{len(video)}",
         f"| number of detections: {len(list_of_houghcircle_bbox)+len(list_of_color_based_bbox)}")
+        frame = cv2.putText(frame, f'fps: {round(fps, 2)}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
     frame = cv_detectors.draw_bounding_box(frame, list_of_color_based_bbox, (255, 0, 0))
     frame = cv_detectors.draw_bounding_box(frame, list_of_houghcircle_bbox, (0, 255, 0))

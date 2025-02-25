@@ -3,11 +3,14 @@ from torch.utils.data import Dataset
 import json
 from pathlib import Path
 import cv2
+import os
 from collections import defaultdict
 import torchvision.transforms as transforms
+import numpy as np
 
 class LabDataset(Dataset):
-    def __init__(self, annotation: str | Path, preprocessing_func=None):        
+    def __init__(self, dataset_folder: str | Path, annotation: str | Path, preprocessing_func=None):        
+        self.dataset_folder = dataset_folder
         self.annotations = self.load_json_data(annotation)
         self.preprocess_func = preprocessing_func
         self.image_id_to_annotation = self.get_annotations_for_image_id()
@@ -29,11 +32,8 @@ class LabDataset(Dataset):
     def __getitem__(self, idx):
         # get the data associated with the idx
         image_dict = self.annotations["images"][idx]
-        image = cv2.imread(image_dict["file_name"])
-
-        transform = transforms.ToTensor()
-        image = transform(image)
-        image /= 255
+        img_path = os.path.join(self.dataset_folder, image_dict["file_name"])
+        image = cv2.imread(img_path)
 
         if image is None:
             raise ValueError("Image read as none")
@@ -46,9 +46,9 @@ class LabDataset(Dataset):
         labels = []
         for annotation in annotation_list:
             # convert bounding box format x,y,w,h to x,y,xy
-            x_min, y_min, width, height = annotation['bbox']
-            x_max = x_min + width
-            y_max = y_min + height
+            x_min, y_min, height, width = annotation['bbox']
+            x_max = x_min + height
+            y_max = y_min + width
             boxes.append([x_min, y_min, x_max, y_max])
             labels.append(annotation['category_id'])
 
@@ -67,5 +67,11 @@ class LabDataset(Dataset):
 
         # if there's any additional preprocessing apply it to the labels
         if self.preprocess_func:
-            image, target = self.transforms(image, target)
+            image = self.preprocess_func(image)
         return image, target
+
+def image_preprocessing(frame: np.ndarray) -> torch.tensor:    
+    # add color dimension first, normalise range and expand dims to include batch dimension
+    frame = frame.transpose((2, 0, 1))
+    frame = frame / 255
+    return torch.from_numpy(frame).float() # set type to float
