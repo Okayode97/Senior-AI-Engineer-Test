@@ -11,7 +11,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 NUM_CLASSES = 3  # 0 - background, 1 - petri_dish, 2 gloves
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-MODEL_WEIGHT = r".\faster_rcnn_custom_2.pth"
+MODEL_WEIGHT = r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\faster_rcnn_custom_4.pth"
 
 class video_reader:
     """
@@ -77,10 +77,13 @@ def image_preprocessing(frame: np.ndarray) -> torch.tensor:
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     
     # add color dimension first, normalise range and expand dims to include batch dimension
-    frame = frame.transpose((2, 0, 1))
+    frame = frame.astype(np.float32)
     frame = frame / 255
-    frame = np.expand_dims(frame, axis=0)
-    return torch.from_numpy(frame).float() # set type to float
+    frame = frame.transpose((2, 0, 1))
+
+    torch_tensor = torch.from_numpy(frame)
+    torch_tensor = torch.unsqueeze(torch_tensor, 0)
+    return torch_tensor # set type to float
 
 
 # load pre-trained model and set num of clas
@@ -88,7 +91,6 @@ def get_model() -> torchvision.models.detection.faster_rcnn.FasterRCNN:
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="DEFAULT")
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
-    model.to(DEVICE)
     return model
 
 
@@ -113,7 +115,7 @@ def top_n_detection(predictions: dict[torch.Tensor], confidence: float = 0.5) ->
 label_two_color = {1: (0, 255, 0), 2: (255, 0, 0)}
 
 # define the model
-model = get_model()
+model = get_model().to(DEVICE)
 
 # load the model weights and set it to evaluation mode 
 model.load_state_dict(torch.load(MODEL_WEIGHT, map_location=DEVICE, weights_only=True))
@@ -126,14 +128,12 @@ _ = video.get_frame(1000)
 for frame in video:
     if video.frame_number % 30 == 0:
         # preprocess each frame 
-        frame = image_preprocessing(frame)
+        torch_tensor = image_preprocessing(frame)
 
         start_time = time.time()
-        prediction = model(frame)[0] # account for batch dim
+        prediction = model(torch_tensor)[0] # account for batch dim
         duration = time.time() - start_time
 
-        # transpose frame (colour last) and convert back to a numpy array
-        frame = frame.detach().numpy()[0].transpose((1, 2, 0))
 
         if duration > 0:
             fps = 1/duration
@@ -141,17 +141,17 @@ for frame in video:
         
             frame = cv2.putText(frame, f'fps: {round(fps, 2)}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
-
         # get predictions with score greater than given confidence
         selected_detections = top_n_detection(prediction, 0.7)
 
-
+        frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         for detection in selected_detections:
             box = detection["box"][0]
             label = detection["label"][0]
             score = detection["score"]
 
-            frame = cv2.rectangle(frame, (round(box[1]), round(box[0])), (round(box[3]), round(box[2])), label_two_color[label], 2)
+            frame = cv2.rectangle(frame, (round(box[0]), round(box[1])), (round(box[2]), round(box[3])), label_two_color[label], 2)
 
         cv2.imshow("Frame", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):

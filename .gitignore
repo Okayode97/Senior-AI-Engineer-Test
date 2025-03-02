@@ -10,7 +10,7 @@ env.bak/
 venv.bak/
 
 # hidden folder 
-/.*/
+**/.*/
 
 # Video files
 *.mp4

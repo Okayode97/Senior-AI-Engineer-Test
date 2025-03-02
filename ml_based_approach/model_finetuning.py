@@ -4,8 +4,9 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
-from custom_dataset import LabDataset, image_preprocessing
-
+from custom_dataset import LabDataset, train_transforms
+from torchvision.utils import draw_bounding_boxes
+import cv2
 
 # training config
 # possible TODO, turn this into a dataclass and experiment with changing different parameters
@@ -13,10 +14,11 @@ from custom_dataset import LabDataset, image_preprocessing
 # moved training to google colab
 NUM_CLASSES = 3  # 0 - background, 1 - petri_dish, 2 gloves
 BATCH_SIZE = 4
-LEARNING_RATE = 0.009
+LEARNING_RATE = 0.005
 EPOCHS = 40
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 ANNOTATION_JSON_FILE = r"/content/drive/MyDrive/test/dataset_v2/annotations.json"
+MODEL_WEIGHT_NAME = "faster_rcnn_custom.pth"
 
 
 # load pre-trained model and set num of clas
@@ -24,7 +26,6 @@ def get_model():
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="COCO_V1")
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
-    model.to(DEVICE)
     return model
 
 
@@ -32,6 +33,17 @@ def get_model():
 def collate_fn(batch):
     return tuple(zip(*batch))
 
+def test_dataloader(data_loader):
+    for images, targets in data_loader:
+        for image, target in zip(images, targets):
+            # set image to H, W, C
+            boxes = target["boxes"]
+            image = draw_bounding_boxes(image, boxes, width=5)
+
+            # convert to numpy array and transpose back to color last
+            image = image.detach().numpy().transpose((1, 2, 0))
+            cv2.imshow("annotations", image)
+            cv2.waitKey(0)
 
 # training function
 def train_one_epoch(model, optimizer, data_loader, device, epoch):
@@ -92,26 +104,31 @@ class EarlyStopper:
         return False
 
 # load the dataset
-dataset = LabDataset(r"/content/drive/MyDrive/test/dataset_v2", r"/content/drive/MyDrive/test/dataset_v2/annotations.json", image_preprocessing)
+full_dataset = LabDataset(r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\.dataset_v2",
+                          r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\.dataset_v2\annotations.json",
+                          train_transforms)
 
 # divide the dataset into training, validation & test set
-train_size = int(0.8 * len(dataset))
-validation_size = len(dataset) - train_size
-dataset, validation_test = torch.utils.data.random_split(dataset, [train_size, validation_size])
+train_size = int(0.8 * len(full_dataset))
+validation_size = len(full_dataset) - train_size
+dataset, validation_set = torch.utils.data.random_split(full_dataset, [train_size, validation_size])
 
 # define training and test data loaders
 train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(validation_test, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+val_loader = DataLoader(validation_set, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+
+# test_dataloader(train_loader)
 
 # get custom model
-model = get_model()
+model = get_model().to(DEVICE)
+model.train()
 
 # construct optimizers, learning rate scheduler
 params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.SGD(params, lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1) 
 
-early_stopper = EarlyStopper(patience=4, min_delta=0.05)
+early_stopper = EarlyStopper(patience=4, min_delta=0.005)
 
 # train the model and evaluate it using the validation set
 for epoch in range(EPOCHS):
@@ -122,4 +139,4 @@ for epoch in range(EPOCHS):
     if early_stopper.early_stop(val_loss):
         break
 
-torch.save(model.state_dict(), "faster_rcnn_custom.pth")
+torch.save(model.state_dict(), MODEL_WEIGHT_NAME)
