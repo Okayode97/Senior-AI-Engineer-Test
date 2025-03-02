@@ -17,7 +17,6 @@ BATCH_SIZE = 4
 LEARNING_RATE = 0.005
 EPOCHS = 40
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-ANNOTATION_JSON_FILE = r"/content/drive/MyDrive/test/dataset_v2/annotations.json"
 MODEL_WEIGHT_NAME = "faster_rcnn_custom.pth"
 
 
@@ -104,8 +103,8 @@ class EarlyStopper:
         return False
 
 # load the dataset
-full_dataset = LabDataset(r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\.dataset_v2",
-                          r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\.dataset_v2\annotations.json",
+full_dataset = LabDataset(r".\.dataset_v2",
+                          r".\.dataset_v2\annotations.json",
                           train_transforms)
 
 # divide the dataset into training, validation & test set

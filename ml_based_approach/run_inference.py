@@ -11,7 +11,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 NUM_CLASSES = 3  # 0 - background, 1 - petri_dish, 2 gloves
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-MODEL_WEIGHT = r"C:\Users\oluka\Desktop\Job Application 2025\Reach industries\Senior-AI-Engineer-Test\ml_based_approach\faster_rcnn_custom_4.pth"
+MODEL_WEIGHT = r".\.dataset_v2\faster_rcnn_custom_4.pth"
 
 class video_reader:
     """
