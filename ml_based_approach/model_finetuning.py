@@ -16,7 +16,7 @@ NUM_CLASSES = 3  # 0 - background, 1 - petri_dish, 2 gloves
 BATCH_SIZE = 4
 LEARNING_RATE = 0.005
 EPOCHS = 40
-DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 MODEL_WEIGHT_NAME = "faster_rcnn_custom.pth"
 
 
@@ -32,6 +32,7 @@ def get_model():
 def collate_fn(batch):
     return tuple(zip(*batch))
 
+
 def test_dataloader(data_loader):
     for images, targets in data_loader:
         for image, target in zip(images, targets):
@@ -43,6 +44,7 @@ def test_dataloader(data_loader):
             image = image.detach().numpy().transpose((1, 2, 0))
             cv2.imshow("annotations", image)
             cv2.waitKey(0)
+
 
 # training function
 def train_one_epoch(model, optimizer, data_loader, device, epoch):
@@ -80,9 +82,10 @@ def evaluate(model, data_loader, device):
 
             # set back to eval mode
             model.eval()
-    
+
     print(f"Validation Loss: {total_loss}\n")
     return total_loss
+
 
 # https://stackoverflow.com/questions/71998978/early-stopping-in-pytorch
 class EarlyStopper:
@@ -90,7 +93,7 @@ class EarlyStopper:
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
-        self.min_validation_loss = float('inf')
+        self.min_validation_loss = float("inf")
 
     def early_stop(self, validation_loss):
         if validation_loss < self.min_validation_loss:
@@ -102,10 +105,9 @@ class EarlyStopper:
                 return True
         return False
 
+
 # load the dataset
-full_dataset = LabDataset(r".\.dataset_v2",
-                          r".\.dataset_v2\annotations.json",
-                          train_transforms)
+full_dataset = LabDataset(r".\.dataset_v2", r".\.dataset_v2\annotations.json", train_transforms)
 
 # divide the dataset into training, validation & test set
 train_size = int(0.8 * len(full_dataset))
@@ -116,8 +118,6 @@ dataset, validation_set = torch.utils.data.random_split(full_dataset, [train_siz
 train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
 val_loader = DataLoader(validation_set, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
 
-# test_dataloader(train_loader)
-
 # get custom model
 model = get_model().to(DEVICE)
 model.train()
@@ -125,7 +125,7 @@ model.train()
 # construct optimizers, learning rate scheduler
 params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.SGD(params, lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1) 
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
 early_stopper = EarlyStopper(patience=4, min_delta=0.005)
 

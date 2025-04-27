@@ -9,9 +9,10 @@ from torch.nn import Module
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
-NUM_CLASSES = 3  # 0 - background, 1 - petri_dish, 2 gloves
-DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+NUM_CLASSES = 4  # 0 - background, 1 - petri_dish, 2 gloves, 3 chemical bottle
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 MODEL_WEIGHT = r".\.dataset_v2\faster_rcnn_custom_4.pth"
+
 
 class video_reader:
     """
@@ -23,7 +24,7 @@ class video_reader:
         - video_source (Path | str | int): Source for video
     """
 
-    def __init__(self, video_source: Path | str | int=0):
+    def __init__(self, video_source: Path | str | int = 0):
         self.video = cv2.VideoCapture(video_source)
         if not self.video.isOpened():
             raise RuntimeError("Unable to read frames from video...")
@@ -41,11 +42,11 @@ class video_reader:
             print("Unable to read frames from video....")
             self.video.release()
             raise StopIteration
-        
+
         return frame
 
     def __len__(self) -> int:
-        return int(self.total_frames) # initially float type
+        return int(self.total_frames)  # initially float type
 
     @property
     def frame_number(self) -> int:
@@ -55,7 +56,7 @@ class video_reader:
         # raise error if trying to get specific frame from live camera
         if self.is_live:
             raise RuntimeError("Running from live feed..., unable to retrieve specific frames")
-        
+
         # raise error if provided index is out of range
         if (index < 0) or (index >= self.total_frames):
             raise IndexError(f"Frame index {index} out of range (0 to {self.total_frames-1}).")
@@ -75,7 +76,7 @@ def image_preprocessing(frame: np.ndarray) -> torch.tensor:
 
     # updates frame to have the right color space (blue gloves not orange)
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    
+
     # add color dimension first, normalise range and expand dims to include batch dimension
     frame = frame.astype(np.float32)
     frame = frame / 255
@@ -83,7 +84,7 @@ def image_preprocessing(frame: np.ndarray) -> torch.tensor:
 
     torch_tensor = torch.from_numpy(frame)
     torch_tensor = torch.unsqueeze(torch_tensor, 0)
-    return torch_tensor # set type to float
+    return torch_tensor  # set type to float
 
 
 # load pre-trained model and set num of clas
@@ -95,7 +96,7 @@ def get_model() -> torchvision.models.detection.faster_rcnn.FasterRCNN:
 
 
 def top_n_detection(predictions: dict[torch.Tensor], confidence: float = 0.5) -> list[dict]:
-    
+
     # select n predictions with highest score
     scores = predictions["scores"].detach().numpy()
     bboxes = predictions["boxes"].detach().numpy()
@@ -110,14 +111,18 @@ def top_n_detection(predictions: dict[torch.Tensor], confidence: float = 0.5) ->
     selected_boxs = bboxes[idxs]
     selected_labels = labels[idxs]
 
-    return [{"score": score, "box": box, "label": label} for score, box, label in zip(selected_scores, selected_boxs, selected_labels)]
+    return [
+        {"score": score, "box": box, "label": label}
+        for score, box, label in zip(selected_scores, selected_boxs, selected_labels)
+    ]
 
-label_two_color = {1: (0, 255, 0), 2: (255, 0, 0)}
+
+label_to_color = {1: (0, 255, 0), 2: (255, 0, 0)}
 
 # define the model
 model = get_model().to(DEVICE)
 
-# load the model weights and set it to evaluation mode 
+# load the model weights and set it to evaluation mode
 model.load_state_dict(torch.load(MODEL_WEIGHT, map_location=DEVICE, weights_only=True))
 model.eval()
 
@@ -127,19 +132,20 @@ _ = video.get_frame(1000)
 
 for frame in video:
     if video.frame_number % 30 == 0:
-        # preprocess each frame 
+        # preprocess each frame
         torch_tensor = image_preprocessing(frame)
 
         start_time = time.time()
-        prediction = model(torch_tensor)[0] # account for batch dim
+        prediction = model(torch_tensor)[0]  # account for batch dim
         duration = time.time() - start_time
 
-
         if duration > 0:
-            fps = 1/duration
+            fps = 1 / duration
             print(f"Model fps: {fps} | frame processed: {video.frame_number}/{len(video)}")
-        
-            frame = cv2.putText(frame, f'fps: {round(fps, 2)}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+            frame = cv2.putText(
+                frame, f"fps: {round(fps, 2)}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA
+            )
 
         # get predictions with score greater than given confidence
         selected_detections = top_n_detection(prediction, 0.7)
@@ -151,12 +157,10 @@ for frame in video:
             label = detection["label"][0]
             score = detection["score"]
 
-            frame = cv2.rectangle(frame, (round(box[0]), round(box[1])), (round(box[2]), round(box[3])), label_two_color[label], 2)
+            frame = cv2.rectangle(
+                frame, (round(box[0]), round(box[1])), (round(box[2]), round(box[3])), label_to_color[label], 2
+            )
 
         cv2.imshow("Frame", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
-
-
-
-

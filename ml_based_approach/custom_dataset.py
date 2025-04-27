@@ -10,6 +10,7 @@ from torchvision.io import read_image
 import torchvision.transforms as T
 import numpy as np
 
+
 class LabDataset(Dataset):
     def __init__(self, dataset_folder: str | Path, annotation: str | Path, preprocessing_func=None):
         self.dataset_folder = dataset_folder
@@ -39,12 +40,12 @@ class LabDataset(Dataset):
         # image h, w, c
         # image = read_image(img_path)
         image = cv2.imread(img_path)
-        image = image.astype(np.float32) # specify dtype
-        image /= 255 # normalise to range from 0 - 1
+        image = image.astype(np.float32)  # specify dtype
+        image /= 255  # normalise to range from 0 - 1
 
         if image is None:
             raise ValueError("Image read as none")
-        image_id =  image_dict["id"]
+        image_id = image_dict["id"]
 
         # get associated annotations
         annotation_list = [self.annotations["annotations"][idx] for idx in self.image_id_to_annotation[image_id]]
@@ -53,11 +54,11 @@ class LabDataset(Dataset):
         labels = []
         for annotation in annotation_list:
             # convert bounding box format x,y,w,h to x,y,xy
-            y_min, x_min, height, width = annotation['bbox']
-            x_max = x_min + width + 10 # add 10px to height and width to better cover object
-            y_max = y_min + height + 10
+            y_min, x_min, height, width = annotation["bbox"]
+            x_max = x_min + width
+            y_max = y_min + height
             boxes.append([x_min, y_min, x_max, y_max])
-            labels.append(annotation['category_id'])
+            labels.append(annotation["category_id"])
 
         # convert lists to tensors
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
@@ -65,11 +66,11 @@ class LabDataset(Dataset):
 
         # create target dictionary
         target = {
-            'boxes': boxes,
-            'labels': labels,
-            'image_id': torch.tensor([image_id]),
-            'area': (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]),
-            'iscrowd': torch.zeros(len(labels), dtype=torch.int64)
+            "boxes": boxes,
+            "labels": labels,
+            "image_id": torch.tensor([image_id]),
+            "area": (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]),
+            "iscrowd": torch.zeros(len(labels), dtype=torch.int64),
         }
 
         # if there's any additional preprocessing apply it to the labels
@@ -78,7 +79,4 @@ class LabDataset(Dataset):
         return image, target
 
 
-train_transforms = T.Compose([
-    T.ToTensor()
-    # T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # normalisation result in unsuable images
-])
+train_transforms = T.Compose([T.ToTensor()])
